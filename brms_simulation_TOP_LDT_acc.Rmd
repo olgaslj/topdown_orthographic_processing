@@ -1,0 +1,116 @@
+---
+title: "Topdown captcha LDT accuracy"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+
+
+# libraries
+library(lme4)
+library(ggplot2)
+library(ggpubr)
+library(jtools)
+library(tidyverse)
+library(rstan)
+library(brms)
+library(ggmcmc)
+library(effects)
+library(bayesplot)
+library(bayestestR)
+library(see)
+library(lmerTest)
+library(emmeans)
+library(dplyr)
+library(plyr)
+library(afex)
+library(survey)
+library(sjPlot)
+library(sjmisc)
+library(foreign)
+library(MASS)
+library(Hmisc)
+library(reshape2)
+library(ggeffects)
+library(ggpubr)
+library(jtools)
+library(emmeans)
+library(papaja)
+library(cowplot)
+options(mc.cores = parallel::detectCores())
+
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Topdown captcha LDT
+# Factors: , Presentation, Frequency
+# Relatedness: related vs. unrelated
+# Presentation: captcha vs. printed
+# Frequency: high vs. low frequency
+
+
+```{r}
+
+# disable scientific notation
+options(scipen = 999)
+# set dir
+setwd("C:\\Users\\olgas\\OneDrive - SISSA\\SISSA\\Projects\\Valencia\\Topdown_orthographic_processing\\Analysis\\BRMS_simulations")
+
+#open file
+mydata <- read.csv("top_data_final_16-May-2023_14.43.39h.csv", header = T)
+
+# get LDT data
+ldt_results <- mydata %>% filter(task == "ldt") %>% dplyr::rename(rt =
+                                          rt_ldt, acc = acc_ldt) %>% dplyr::select(-c(acc_sd, rt_sd))
+
+
+# keep only words
+acc_data_ldt <- ldt_results %>% filter(lexicality == "word")
+
+# center variables
+acc_data_ldt <- acc_data_ldt %>% mutate(relatedness_c = if_else(relatedness == "related", -0.5, 0.5))
+acc_data_ldt <- acc_data_ldt %>% mutate(frequency_c = if_else(frequency == "hf", -0.5, 0.5))
+acc_data_ldt <- acc_data_ldt %>% mutate(presentation_c = if_else(presentation == "captcha", -0.5, 0.5))
+
+#Averages across conditions
+tapply(acc_data_ldt$acc,list(acc_data_ldt$relatedness, acc_data_ldt$frequency, acc_data_ldt$presentation), mean)
+
+#Factors accuracy
+acc_data_ldt <- acc_data_ldt %>% mutate(across(c(participant, frequency,  frequency_c, relatedness, relatedness_c, presentation, presentation_c, list), as.factor))
+
+
+# Full accuracy BRMS model
+brms_ldt_acc <- brm(data = acc_data_ldt, acc ~  
+                            relatedness_c * presentation_c * frequency_c + 
+                            (1 + relatedness_c * presentation_c * frequency_c| participant) +
+                            (1 + relatedness_c * presentation_c | item), 
+                            warmup = 1000,
+                            iter = 5000,
+                            chains = 4,
+                            family = bernoulli(),
+                            inits = "random",
+                            control = list(adapt_delta = 0.95),
+                            cores  = 4)
+
+
+# Summary of the accuracy model
+summary(brms_ldt_acc)
+
+# Saving the accuracy model
+save(brms_ldt_acc, file="brms_topdown_ldt_acc.Rdata")
+
+# Highest Density Intervals
+del_hdi = hdi(brms_ldt_acc, ci = c(0.50, 0.75, 0.89, 0.95))
+plot(del_hdi) + scale_fill_flat() + theme_apa()
+
+
+
+```
+
+
+
+
+

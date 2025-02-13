@@ -1,0 +1,129 @@
+---
+title: "Topdown captcha SD reaction times"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+
+
+# libraries
+library(lme4)
+library(ggplot2)
+library(ggpubr)
+library(jtools)
+library(tidyverse)
+library(rstan)
+library(brms)
+library(ggmcmc)
+library(effects)
+library(bayesplot)
+library(bayestestR)
+library(see)
+library(lmerTest)
+library(emmeans)
+library(dplyr)
+library(plyr)
+library(afex)
+library(survey)
+library(sjPlot)
+library(sjmisc)
+library(foreign)
+library(MASS)
+library(Hmisc)
+library(reshape2)
+library(ggeffects)
+library(ggpubr)
+library(jtools)
+library(emmeans)
+library(papaja)
+library(cowplot)
+options(mc.cores = parallel::detectCores())
+
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Topdown captcha SD
+# Factors:
+# Relatedness: related vs. unrelated
+# Presentation: captcha vs. printed
+# Frequency: high vs. low frequency
+
+
+```{r}
+
+# disable scientific notation
+options(scipen = 999)
+
+
+#open file
+mydata <- read.csv("top_data_final_16-May-2023_14.43.39h.csv", header = T)
+
+# get SD data
+sd_results <- mydata %>% filter(task == "sd") %>% dplyr::rename(rt =
+                                          rt_sd, acc = acc_sd) %>% dplyr::select(-c(acc_ldt, rt_ldt))
+
+# remove NAs and short RTs
+rt_data_sd <- sd_results %>% filter(!is.na(rt) & rt > 0.25)
+
+# keep only words
+rt_data_sd <- rt_data_sd %>% filter(lexicality == "word")
+
+# keep only "same" condition
+rt_data_sd <- rt_data_sd %>% filter(same_diff == "same")
+
+# remove incorrect responses
+rt_data_sd <- rt_data_sd %>% filter(acc == 1)
+
+# RT in milliseconds
+rt_data_sd$rt=1000*rt_data_sd$rt
+
+# center variables
+rt_data_sd <- rt_data_sd %>% mutate(relatedness_c = if_else(relatedness == "related", -0.5, 0.5))
+rt_data_sd <- rt_data_sd %>% mutate(frequency_c = if_else(frequency == "hf", -0.5, 0.5))
+rt_data_sd <- rt_data_sd %>% mutate(presentation_c = if_else(presentation == "captcha", -0.5, 0.5))
+
+#Averages across conditions
+tapply(rt_data_sd$rt,list(rt_data_sd$relatedness, rt_data_sd$frequency, rt_data_sd$presentation), mean)
+
+#Factors RT
+rt_data_sd <- rt_data_sd %>% mutate(across(c(participant, frequency,  frequency_c, relatedness, relatedness_c, presentation, presentation_c, list), as.factor))
+
+
+# Full RT BRMS model
+brms_sd_rtbeta <- brm(data = rt_data_sd, bf(rt ~  
+                            relatedness_c * presentation_c * frequency_c + 
+                            (1 + relatedness_c * presentation_c * frequency_c| participant) +
+                            (1 + relatedness_c * presentation_c | item), 
+                             beta ~ 
+                               relatedness_c * presentation_c * frequency_c + 
+                            (1 + relatedness_c * presentation_c * frequency_c| participant) +
+                            (1 + relatedness_c * presentation_c | item)),
+                            warmup = 1000,
+                            iter = 5000,
+                            chains = 4,
+                            family = exgaussian(),
+                            inits  = 0,
+                            control = list(adapt_delta = 0.95),
+                            cores  = 4)
+
+# Summary of the RT model
+summary(brms_sd_rtbeta)
+
+# Saving the RT model
+save(brms_sd_rtbeta, file="brms_topdown_sd_rtbeta.Rdata")
+
+# Highest Density Intervals
+del_hdi = hdi(brms_sd_rtbeta, ci = c(0.50, 0.75, 0.89, 0.95))
+plot(del_hdi) + scale_fill_flat() + theme_apa()
+
+
+
+```
+
+
+
+
+
